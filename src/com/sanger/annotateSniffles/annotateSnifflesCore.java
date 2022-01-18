@@ -154,7 +154,6 @@ public class annotateSnifflesCore {
 			else if(tel.getOperator().toString().equals("I")) {
 				if(Math.abs(sv.getStartLeft() - trackerRef) <= sv.getSearchWidth() && Math.abs(sv.getStartRight() - (trackerRef + tel.getLength())) <= sv.getSearchWidth())
 					return true;
-				trackerRef += tel.getLength();
 			}
 			else if(tel.getOperator().toString().equals("D")) {
 				if(Math.abs(sv.getStartLeft() - trackerRef) <= sv.getSearchWidth() && Math.abs(sv.getStartRight() - (trackerRef + tel.getLength())) <= sv.getSearchWidth())
