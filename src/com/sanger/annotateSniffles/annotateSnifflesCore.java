@@ -128,7 +128,7 @@ public class annotateSnifflesCore {
 		if(sa == null || sa.equals(""))
 			return false;
 		searchList.add(new search(current.getReferenceName(), current.getAlignmentStart(), current.getAlignmentEnd()));
-		Arrays.stream(sa.split("\t")).map(i -> i.split(",")).forEach(i -> searchList.add(new search(i[0], Integer.parseInt(i[1]), Integer.parseInt(i[1]) + TextCigarCodec.decode(i[3]).getReferenceLength())));
+		Arrays.stream(sa.split(";")).map(i -> i.split(",")).forEach(i -> searchList.add(new search(i[0], Integer.parseInt(i[1]), Integer.parseInt(i[1]) + TextCigarCodec.decode(i[3]).getReferenceLength())));
 		for(final search el : searchList) {
 			if(transform(sv.getLeftChrom(), bam).equals(el.chr) && (Math.abs(sv.getStartLeft() - el.start) <= sv.getSearchWidth() || Math.abs(sv.getStartLeft() - el.end) <= sv.getSearchWidth()))
 				fitLeft = true;
