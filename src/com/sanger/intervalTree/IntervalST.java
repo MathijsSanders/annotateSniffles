@@ -55,6 +55,40 @@ public class IntervalST<Value> {
 		}
 		return ll;
 	}
+	public ArrayList<Interval1D> getIntervals() {
+		var items = new ArrayList<Interval1D>();
+		var poppush = new ArrayList<Node>();
+		Node currNode = root;
+		if(root != null) {
+			poppush.add(root);
+			items.add(root.interval);
+			currNode = root;
+			while(poppush.size() > 0) {
+				if(currNode.left != null && !currNode.left.leftClear) {
+					currNode = currNode.left;
+					currNode.leftClear = true;
+					poppush.add(currNode);
+					items.add(currNode.interval);
+				}
+				else if(currNode.right != null && !currNode.right.rightClear) {
+					currNode = currNode.right;
+					currNode.rightClear = true;
+					poppush.add(currNode);
+					items.add(currNode.interval);
+				}
+				else {
+					if(currNode.left != null)
+						currNode.left.leftClear = false;
+					if(currNode.right != null)
+						currNode.right.rightClear = false;
+					poppush.remove(poppush.size()-1);
+					if(poppush.size() > 0)
+						currNode = poppush.get(poppush.size()-1);
+				}
+			}
+		}
+		return items;
+	}
 	public boolean contains(Interval1D interval) {
 		return (get(interval) != null);
 	}

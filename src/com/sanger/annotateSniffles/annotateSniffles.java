@@ -31,19 +31,22 @@ public class annotateSniffles {
 	@Parameter(names = "--shared-bam-control-files", description = "Input PacBio BAM of other controls (not specifically normal).", converter = CommaFileConverter.class, validateWith = CommaFileValidator.class, order=4)
 	public File[] shared_bam_controls = null;
 	
-	@Parameter(names = "--overlap-fraction", description = "Percentage of SV length to define overlap in interval tree.", validateWith = PositiveDoubleValidator.class, converter = PositiveDoubleConverter.class, order=5)
+	@Parameter(names = "--overlap-fraction", description = "Percentage of SV length to define overlap in interval tree (default: 0.05).", validateWith = PositiveDoubleValidator.class, converter = PositiveDoubleConverter.class, order=5)
 	public Double overlap_fraction = 0.05;
 	
-	@Parameter(names = "--minimum-overlap", description = "Minimum width for detecting overlap in interval tree", validateWith = PositiveInteger.class, order=6)
+	@Parameter(names = "--minimum-overlap", description = "Minimum width for detecting overlap in interval tree (default: 20nt).", validateWith = PositiveInteger.class, order=6)
 	public Integer minimum_overlap = 20;
 	
-	@Parameter(names = "--maximum-overlap", description = "Maximum width for detecting overlap in interval tree", validateWith = PositiveInteger.class, order=7)
+	@Parameter(names = "--maximum-overlap", description = "Maximum width for detecting overlap in interval tree (default: 20000nt).", validateWith = PositiveInteger.class, order=7)
 	public Integer max_overlap = 20000;
 	
-	@Parameter(names = "--extract-width", description = "Window to extract reads (mutation_position +- width).", validateWith = PositiveInteger.class, order=8)
+	@Parameter(names = "--extract-width", description = "Window to extract reads (mutation_position +- width) (default: 2500nt).", validateWith = PositiveInteger.class, order=8)
 	public Integer extract_width = 2500;
 	
-	@Parameter(names = "--threads", description = "Number of threads.", validateWith = PositiveInteger.class, order=10)
+	@Parameter(names = "--supplementary-width", description = "Width for identifying linked alignments (default: 250nt).", validateWith = PositiveInteger.class, order=9)
+	public Integer supp_width = 250;
+	
+	@Parameter(names = "--threads", description = "Number of threads (default: 1).", validateWith = PositiveInteger.class, order=10)
 	public Integer threads = 1;
 	
 	@Parameter(names = {"--help","-help"}, help = true, description = "Get usage information", order=11)
@@ -70,7 +73,7 @@ public class annotateSniffles {
 				System.out.println("Warning: Number of threads exceeds number of available cores");
 			as.shared_normals = (as.shared_normals != null) ? exclude(as.shared_normals, as.input_sniffles_file, as.shared_controls) : null;
 			as.shared_controls = (as.shared_controls != null) ? exclude(as.shared_controls, as.input_sniffles_file, as.shared_normals) : null;
-			new annotateSnifflesCore(as.input_bam_file, as.input_sniffles_file, as.output_sniffles_file, as.shared_normals, as.shared_controls, as.shared_bam_normals, as.shared_bam_controls, as.overlap_fraction, as.minimum_overlap, as.max_overlap, as.extract_width, as.threads);
+			new annotateSnifflesCore(as.input_bam_file, as.input_sniffles_file, as.output_sniffles_file, as.shared_normals, as.shared_controls, as.shared_bam_normals, as.shared_bam_controls, as.overlap_fraction, as.minimum_overlap, as.max_overlap, as.extract_width, as.supp_width, as.threads);
 		}
 	}
 	private static File[] exclude(File[] total, File input, File[] shared) {

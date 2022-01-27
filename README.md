@@ -41,7 +41,7 @@ java -Xmx4G -jar annotateSniffles.jar --input-bam-file input_PacBio_BAM_file --i
 
 *Dependencies*
 - Maven version 3+ (For compiling only).
-- Java JDK 11+
+- Java JDK 12+
 
 *Example*
 ```bash

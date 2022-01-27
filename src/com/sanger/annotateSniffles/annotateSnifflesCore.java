@@ -22,12 +22,14 @@ public class annotateSnifflesCore {
 	private String header = null;
 	private HashMap<String, Boolean> headerMap = new HashMap<String, Boolean>(50, 0.9999f);
 	
-	public annotateSnifflesCore(File inputBam, File inputSniffles, String outputSniffles, File[] sharedNormals, File[] sharedControls, File[] sharedBamNormals, File[] sharedBamControls, double overlapFraction, int minOverlap, int maxOverlap, int extractWidth, int threads) {
-		System.out.println("Version: 0.02");
+	public annotateSnifflesCore(File inputBam, File inputSniffles, String outputSniffles, File[] sharedNormals, File[] sharedControls, File[] sharedBamNormals, File[] sharedBamControls, double overlapFraction, int minOverlap, int maxOverlap, int extractWidth, int suppWidth, int threads) {
+		System.out.println("Version: 0.04");
 		System.out.println("Retrieving SVs...");
 		var intervalMap = retrieveStructuralVariants(inputSniffles, sharedNormals, sharedControls, threads, overlapFraction, minOverlap, maxOverlap);
 		System.out.println("Reviewing header PacBio BAM files");
-		reviewHeader(sharedBamNormals, sharedBamControls);
+		reviewHeader(inputBam, sharedBamNormals, sharedBamControls);
+		System.out.println("Validate supplementary alignments...");
+		validateSupplementary(intervalMap.getPrimary(), inputBam, suppWidth, threads);
 		System.out.println("First annotation step by interval trees...");
 		firstAnnotationStep(intervalMap, threads);
 		System.out.println("Second annotation step by screening PacBio BAM files...");
@@ -40,7 +42,9 @@ public class annotateSnifflesCore {
 			System.exit(-5);
 		}
 	}
-	private void reviewHeader(File[] sharedBamNormals, File[] sharedBamControls) {
+	private void reviewHeader(File bam, File[] sharedBamNormals, File[] sharedBamControls) {
+		var hInput = bHeader(bam);
+		headerMap.put(hInput.name, hInput.state);
 		Arrays.stream(sharedBamNormals).map(i -> bHeader(i)).forEach(i -> headerMap.put(i.name, i.state));
 		Arrays.stream(sharedBamControls).map(i -> bHeader(i)).forEach(i -> headerMap.put(i.name, i.state));
 	}
@@ -62,6 +66,65 @@ public class annotateSnifflesCore {
 	}
 	private svContainer retrieveStructuralVariants(File inputSniffles, File[] sharedNormals, File[] sharedControls, int threads, double oFrac, int minOl, int maxOl) {
 		return new svContainer(readPrimary(inputSniffles, oFrac, minOl, maxOl), readSecondary(sharedNormals, threads), readSecondary(sharedControls, threads));
+	}
+	private void validateSupplementary(ArrayList<svInfo> primary, File bam, int suppWidth, int threads) {
+		var forkJoinPool = new ForkJoinPool(threads);
+		TriConsumer<svInfo, String, Interval1D> addLeft = (sv, chrom, interval) -> sv.addIntervalLeft(chrom, interval);
+		TriConsumer<svInfo, String, Interval1D> addRight = (sv, chrom, interval) -> sv.addIntervalRight(chrom, interval);
+		try {
+			forkJoinPool.submit(() -> primary.parallelStream().filter(i -> !i.getLeftChrom().equals(i.getRightChrom())).forEach(i -> {System.out.println(String.join(" - ", i.getLeftChrom(), i.getStartLeft().toString(), i.getRightChrom(), i.getStartRight().toString())); validate(i.setLeft(), bam, addLeft, suppWidth); validate(i.setRight(), bam, addRight, suppWidth);})).get();
+		} catch(InterruptedException | ExecutionException e) {
+			e.printStackTrace();
+			System.exit(-4);
+		}
+	}
+	private void validate(svInfo sv, File bam, TriConsumer<svInfo, String, Interval1D> addFunc, int suppWidth) {
+		var inputSam = SamReaderFactory.make().enable(SamReaderFactory.Option.DONT_MEMORY_MAP_INDEX).validationStringency(ValidationStringency.LENIENT).samRecordFactory(DefaultSAMRecordFactory.getInstance()).open(bam);
+		try {
+			SAMRecordIterator it = inputSam.query(transform(sv.getActiveChrom(), bam), sv.getActiveStart() - suppWidth, sv.getActiveStart() + suppWidth, false);
+			SAMRecord read = null;
+			while(it.hasNext()) {
+				read = it.next();
+				var sa = read.getStringAttribute("SA");
+				if(sa == null || sa.equals(""))
+					continue;
+				var start = (Math.abs(read.getAlignmentStart() - sv.getActiveStart()) < Math.abs(read.getAlignmentEnd() - sv.getActiveStart()));
+				var loc = (start) ? read.getAlignmentStart() : read.getAlignmentEnd();
+				if(Math.abs(loc - sv.getActiveStart()) > suppWidth)
+					continue;
+				var readPos = (start) ? (read.getAlignmentStart() - read.getUnclippedStart()) : (getReadPosEnd(read));
+				Arrays.stream(sa.split(";")).map(i -> i.split(",")).forEach(i -> review(sv, suppWidth, addFunc, i, readPos, start));
+			}
+			inputSam.close();
+		} catch (IOException e) {
+			e.printStackTrace();
+			System.exit(-5);
+		}
+	}
+	private int getReadPosEnd(SAMRecord read) {
+		var cList = new ArrayList<CigarElement>(100);
+		cList.addAll(read.getCigar().getCigarElements());
+		if(read.getCigar().isRightClipped())
+			cList.remove(cList.size() - 1);
+		return Cigar.getReadLength(cList);
+	}
+	private void review(svInfo sv, int suppWidth, TriConsumer<svInfo, String, Interval1D> addFunc, String[] saTokens, int readPos, boolean start) {
+		var chrom = saTokens[0];
+		var begin = Integer.parseInt(saTokens[1]);
+		var cigar = TextCigarCodec.decode(saTokens[3]);
+		var cList = new ArrayList<CigarElement>(100); 
+		cList.addAll(cigar.getCigarElements());
+		if(start && cigar.isRightClipped())
+			cList.remove(cList.size() - 1);
+		else if(!start && cigar.isLeftClipped()) {
+			var tmp = new ArrayList<CigarElement>(100);
+			tmp.add(cList.get(0));
+			cList = tmp;
+		}
+		var clipPoint = Cigar.getReadLength(cList);
+		var finLoc = (start) ? begin + cigar.getReferenceLength() : begin;
+		if(Math.abs(clipPoint - readPos) < suppWidth)
+			addFunc.accept(sv, chrom, new Interval1D(finLoc - (suppWidth * 2), finLoc + (suppWidth * 2)));
 	}
 	private void firstAnnotationStep(svContainer iMap, int threads) {
 		var primary = iMap.getPrimary();
@@ -179,7 +242,7 @@ public class annotateSnifflesCore {
 	}
 	private ArrayList<svInfo> readPrimary(File input, double oFrac, int minOl, int maxOl){
 		Supplier<Stream<String>> streamSupplier = () -> {try{return Files.lines(input.toPath());}catch(IOException e){e.printStackTrace();} return null;};
-		header = String.join("\t", streamSupplier.get().findFirst().get(), "SnifflesNormals", "SnifflesControls", "BamNormals", "BamControls");
+		header = String.join("\t", streamSupplier.get().findFirst().get(), "SnifflesNormals", "SnifflesControls", "BamNormals", "BamControls", "Supplementary Chromosomes Left", "Supplementary Chromosomes Right");
 		return streamSupplier.get().skip(1).map(i -> i.split("\t")).map(i -> extractStructuralVariant(i, oFrac, minOl, maxOl)).collect(Collectors.toCollection(ArrayList::new));
 	}
 	private ConcurrentHashMap<String, HashMap<String, IntervalST<svInfo>>> readSecondary(File[] shared, int threads) {
